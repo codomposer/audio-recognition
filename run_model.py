@@ -106,7 +106,7 @@ def main():
         model=model,
         train_loader=train_loader,
         test_loader=test_loader,
-        epochs=23,
+        epochs=60,
         lr=0.0001
     )
     

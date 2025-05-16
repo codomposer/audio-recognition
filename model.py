@@ -7,28 +7,38 @@ import time
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=12, kernel_size=3, stride=1, padding=1),
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm2d(16),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(in_channels=12, out_channels=24, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(2),
+
+            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(in_channels=24, out_channels=12, kernel_size=3, stride=1, padding=1),
+            nn.MaxPool2d(2),
+
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Dropout(.2),
+            nn.MaxPool2d(2)
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.3),
             nn.Flatten(),
-            nn.Linear(in_features=12288, out_features=128),
+            nn.Linear(64 * 32 * 32, 128),  # for 256x256 input images
             nn.ReLU(),
-            nn.Linear(in_features=128, out_features=64),
+            nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(in_features=64, out_features=1),
+            nn.Linear(64, 1),
             nn.Sigmoid()
         )
-    
+
     def forward(self, x):
-        return self.net(x)
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
 
 def eval_model(model, data_loader):
     """
