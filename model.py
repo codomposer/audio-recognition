@@ -6,21 +6,27 @@ import time
 import numpy as np
 
 class LSTM(nn.Module):
-    def __init__(self, input_size=40, hidden_size=128, num_layers=2, bidirectional=True):
+    def __init__(self, input_size=40, hidden_size=128, num_layers=2, bidirectional=True, dropout=0.3):
         super(LSTM, self).__init__()
         self.lstm = nn.LSTM(
             input_size=input_size,      # e.g., number of mel-frequency bins (like 40)
             hidden_size=hidden_size,
             num_layers=num_layers,
             batch_first=True,
-            bidirectional=bidirectional
+            bidirectional=bidirectional,
+            dropout=dropout if num_layers > 1 else 0  # Apply dropout between LSTM layers
         )
         
         direction_factor = 2 if bidirectional else 1
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_size * direction_factor, 64),
+            nn.Linear(hidden_size * direction_factor, 128),
+            nn.BatchNorm1d(128),  # Add batch normalization
             nn.ReLU(),
-            nn.Dropout(0.3),
+            nn.Dropout(dropout),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),   # Add batch normalization
+            nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(64, 1),
             nn.Sigmoid()
         )
@@ -72,7 +78,7 @@ def eval_model(model, data_loader):
     acc = classification_report(y_true_list, y_pred_list, output_dict=True, zero_division=0)['accuracy']
     return acc, test_loss
 
-def train_model(model, train_loader, test_loader, epochs=50, lr=0.0001):
+def train_model(model, train_loader, test_loader, epochs=60, lr=0.001, weight_decay=1e-5):
     """
     Train the model
     
@@ -94,7 +100,17 @@ def train_model(model, train_loader, test_loader, epochs=50, lr=0.0001):
     
     # Loss function and optimizer
     loss_fn = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)  # Add L2 regularization
+    
+    # Learning rate scheduler
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 
+        mode='max',        # Monitor validation accuracy
+        factor=0.5,       # Reduce LR by half when plateau
+        patience=5,       # Wait 5 epochs before reducing LR
+        min_lr=1e-6       # Minimum learning rate
+    )
+    print(f"Learning rate scheduler initialized with patience={5}")
     
     # Track metrics
     epoch_nums = []
@@ -133,18 +149,34 @@ def train_model(model, train_loader, test_loader, epochs=50, lr=0.0001):
             loss.backward()
             optimizer.step()
         
-        # Evaluate every 5 epochs
-        if epoch % 5 == 0:
-            metric, test_loss = eval_model(model, test_loader)
-            if metric > current_best:
-                best_model = model
-                current_best = metric
-                print(f'best accuracy so far is {current_best}')
-            
-            epoch_nums.append(epoch)
-            training_loss.append(train_loss)
-            validation_loss.append(test_loss)
-            validation_acc.append(metric)
+        # Evaluate after each epoch
+        metric, test_loss = eval_model(model, test_loader)
+        
+        # Update learning rate scheduler
+        scheduler.step(metric)
+        
+        # Save best model
+        if metric > current_best:
+            # Create a deep copy of the model
+            best_model = type(model)(
+                input_size=model.lstm.input_size,
+                hidden_size=model.lstm.hidden_size,
+                num_layers=model.lstm.num_layers,
+                bidirectional=model.lstm.bidirectional
+            )
+            best_model.load_state_dict(model.state_dict())
+            best_model = best_model.to(device)
+            current_best = metric
+            print(f'Epoch {epoch}: New best accuracy: {current_best:.4f}')
+        
+        # Record training statistics
+        epoch_nums.append(epoch)
+        training_loss.append(train_loss)
+        validation_loss.append(test_loss)
+        validation_acc.append(metric)
+        
+        # Print epoch statistics
+        print(f'Epoch {epoch}: Train Loss: {train_loss:.4f}, Val Loss: {test_loss:.4f}, Val Acc: {metric:.4f}')
     
     end = time.time()
     training_time = (end - start) / 60
