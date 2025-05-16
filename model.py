@@ -3,42 +3,37 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import classification_report
 import time
+import numpy as np
 
-class CNN(nn.Module):
-    def __init__(self):
-        super(CNN, self).__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=5, stride=1, padding=2),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-
-            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-
-            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
+class LSTM(nn.Module):
+    def __init__(self, input_size=40, hidden_size=128, num_layers=2, bidirectional=True):
+        super(LSTM, self).__init__()
+        self.lstm = nn.LSTM(
+            input_size=input_size,      # e.g., number of mel-frequency bins (like 40)
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=bidirectional
         )
-
+        
+        direction_factor = 2 if bidirectional else 1
         self.classifier = nn.Sequential(
+            nn.Linear(hidden_size * direction_factor, 64),
+            nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Flatten(),
-            nn.Linear(64 * 32 * 32, 128),  # for 256x256 input images
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
             nn.Linear(64, 1),
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        x = self.features(x)
-        x = self.classifier(x)
-        return x
+        # x shape: (batch_size, time_steps, input_size)
+        _, (h_n, _) = self.lstm(x)
+        # If bidirectional, concatenate last forward and backward hidden states
+        if self.lstm.bidirectional:
+            h_n = torch.cat((h_n[-2,:,:], h_n[-1,:,:]), dim=1)
+        else:
+            h_n = h_n[-1,:,:]
+        return self.classifier(h_n)
 
 def eval_model(model, data_loader):
     """
