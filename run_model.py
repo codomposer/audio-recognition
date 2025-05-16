@@ -16,11 +16,11 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report
 import time
 import random
-from model import LSTM, train_model, eval_model
+from model import EnhancedAudioCNN, train_model, eval_model
 
 
 # Define dataset class
-class SpectrogramSequenceDataset(Dataset):
+class SpectrogramDataset(Dataset):
     def __init__(
         self, csv_file, input_size=40, max_len=100, transform=None, augment=False
     ):
@@ -61,49 +61,14 @@ class SpectrogramSequenceDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        # Convert the image tensor to a sequence for LSTM
+        # For CNN, we can use the image tensor directly
         # image shape: [3, H, W] where H is height and W is width
-        # We'll convert this to a sequence of feature vectors by treating each column as a time step
-
-        # First, convert to numpy and take the mean across color channels
-        img_np = image.numpy().mean(axis=0)  # Now shape is [H, W]
-
-        # Resize along the height dimension to match our input_size
-        # This will give us a consistent number of features per time step
-        if img_np.shape[0] != self.input_size:
-            # Resize by averaging or interpolating along height dimension
-            resized = np.zeros((self.input_size, img_np.shape[1]))
-            for i in range(self.input_size):
-                # Simple linear interpolation
-                orig_i = i * img_np.shape[0] / self.input_size
-                floor_i = int(np.floor(orig_i))
-                ceil_i = min(floor_i + 1, img_np.shape[0] - 1)
-                alpha = orig_i - floor_i
-                resized[i] = img_np[floor_i] * (1 - alpha) + img_np[ceil_i] * alpha
-            img_np = resized
-
-        # Now transpose to get [W, H] where W is time steps and H is features
-        sequence = img_np.T  # Now shape is [W, input_size]
-
-        # Pad or truncate to max_len
-        if sequence.shape[0] < self.max_len:
-            # Pad with zeros
-            pad_width = self.max_len - sequence.shape[0]
-            sequence = np.pad(sequence, ((0, pad_width), (0, 0)), mode="constant")
-        else:
-            # Truncate to max_len
-            sequence = sequence[: self.max_len, :]
-
-        # Convert to tensor
-        features = torch.FloatTensor(sequence)
-
-        # Normalize the features
-        features = (features - features.mean()) / (features.std() + 1e-8)
-
+        
         # Convert target to numeric (0 for cat, 1 for dog)
         target = 0 if self.data_frame.iloc[idx, 2] == "cat" else 1
+        target = torch.FloatTensor([target])
 
-        return features, target
+        return image, target
 
     def apply_augmentation(self, image):
         """
@@ -246,7 +211,7 @@ def main():
     max_len = 100  # Maximum number of time steps
 
     # Create training dataset with augmentation
-    train_dataset = SpectrogramSequenceDataset(
+    train_dataset = SpectrogramDataset(
         csv_file="./img_dataset/train/train.csv",
         input_size=input_size,
         max_len=max_len,
@@ -255,7 +220,7 @@ def main():
     )
 
     # Create test dataset without augmentation
-    test_dataset = SpectrogramSequenceDataset(
+    test_dataset = SpectrogramDataset(
         csv_file="./img_dataset/test/test.csv",
         input_size=input_size,
         max_len=max_len,
@@ -268,14 +233,8 @@ def main():
 
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=0)
 
-    # Initialize model with improved parameters
-    model = LSTM(
-        input_size=input_size,
-        hidden_size=128,
-        num_layers=2,
-        bidirectional=True,
-        dropout=0.3,  # Add dropout for regularization
-    )
+    # Initialize the CNN model
+    model = EnhancedAudioCNN()
     model = model.to(device)
     print(model)
 
@@ -285,7 +244,7 @@ def main():
         model=model,
         train_loader=train_loader,
         test_loader=test_loader,
-        epochs=60,
+        epochs=120,
         lr=0.001,
         weight_decay=1e-5,  # L2 regularization
     )
@@ -367,35 +326,9 @@ def main():
             # Apply transforms
             img_tensor = transform(image)
 
-            # Convert the image tensor to a sequence for LSTM
-            img_np = img_tensor.numpy().mean(axis=0)  # Average across color channels
-
-            # Resize along the height dimension to match our input_size
-            if img_np.shape[0] != input_size:
-                resized = np.zeros((input_size, img_np.shape[1]))
-                for i in range(input_size):
-                    orig_i = i * img_np.shape[0] / input_size
-                    floor_i = int(np.floor(orig_i))
-                    ceil_i = min(floor_i + 1, img_np.shape[0] - 1)
-                    alpha = orig_i - floor_i
-                    resized[i] = img_np[floor_i] * (1 - alpha) + img_np[ceil_i] * alpha
-                img_np = resized
-
-            # Transpose to get time steps as the first dimension
-            sequence = img_np.T  # Now shape is [W, input_size]
-
-            # Pad or truncate to max_len
-            if sequence.shape[0] < max_len:
-                pad_width = max_len - sequence.shape[0]
-                sequence = np.pad(sequence, ((0, pad_width), (0, 0)), mode="constant")
-            else:
-                sequence = sequence[:max_len, :]
-
-            # Normalize
-            sequence = (sequence - sequence.mean()) / (sequence.std() + 1e-8)
-
-            # Convert to tensor and add batch dimension
-            features = torch.FloatTensor(sequence).unsqueeze(0).to(device)
+            # For CNN, we can use the image tensor directly
+            # Add batch dimension
+            features = img_tensor.unsqueeze(0).to(device)
 
             # Make prediction
             pred = model(features)
