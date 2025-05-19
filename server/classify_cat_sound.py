@@ -163,20 +163,17 @@ def main(audio_file_path, model_path=None):
     # Check if audio file exists
     if not os.path.exists(audio_file_path):
         logging.error(f"Audio file '{audio_file_path}' not found.")
-        print(f"Error: Audio file '{audio_file_path}' not found.")
         return False
     
     # Check if model file exists
     if not os.path.exists(model_path):
         logging.error(f"Model file '{model_path}' not found.")
-        print(f"Error: Model file '{model_path}' not found.")
         return False
     
     try:
         # Create spectrogram
         print("Creating spectrogram...")
         spectrogram_path = create_spectrogram(audio_file_path)
-        print(f"Spectrogram created at: {spectrogram_path}")
         logging.info(f"Spectrogram created at: {spectrogram_path}")
         
         # Load model

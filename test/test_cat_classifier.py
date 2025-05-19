@@ -23,8 +23,8 @@ def test_classifier():
     print("Starting cat sound classifier test...")
     
     # Define paths
-    audio_file = "../data/cats_dogs/train/cat/cat_1.wav"
-    model_path = "../audio_classification_model_augmented.pth"
+    audio_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "cats_dogs", "train", "dog", "dog_barking_0.wav")
+    model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "audio_classification_model_augmented.pth")
     
     # Check if files exist
     print(f"Checking if audio file exists: {os.path.exists(audio_file)}")
@@ -105,6 +105,8 @@ def test_classifier():
         pred_value = prediction.item()
         print(f"Raw prediction value: {pred_value}")
         
+        # Model was trained with 0=cat, 1=dog
+        # So values closer to 0 indicate cat, values closer to 1 indicate dog
         is_cat = pred_value < 0.5
         confidence = 1 - pred_value if is_cat else pred_value
         
