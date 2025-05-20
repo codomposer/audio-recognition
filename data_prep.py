@@ -45,24 +45,51 @@ def create_directory_structure():
     os.makedirs('img_dataset/test/dog', exist_ok=True)
     os.makedirs('img_dataset/inferences', exist_ok=True)
 
-def process_audio_files():
-    """Process all audio files and convert them to spectrograms."""
-    # Process training data
+def limit_files(file_list, limit):
+    """Limit the number of files to process.
+    
+    Args:
+        file_list (list): List of files to limit
+        limit (int): Maximum number of files to return
+        
+    Returns:
+        list: Limited list of files
+    """
+    if len(file_list) <= limit:
+        return file_list
+    return file_list[:limit]
+
+def process_audio_files(train_limit=100, test_limit=13):
+    """Process audio files and convert them to spectrograms.
+    
+    Args:
+        train_limit (int): Number of samples to use for training from each class
+        test_limit (int): Number of samples to use for testing from each class
+    """
+    # Process training data with limits
     CAT_TRAIN = './data/cats_dogs/train/cat/'
-    for sound in os.listdir(CAT_TRAIN):
+    cat_train_files = limit_files(os.listdir(CAT_TRAIN), train_limit)
+    print(f"Processing {len(cat_train_files)} cat training samples")
+    for sound in cat_train_files:
         create_spectogram(sound, CAT_TRAIN, './img_dataset/train/cat/')
     
     DOG_TRAIN = './data/cats_dogs/train/dog/'
-    for sound in os.listdir(DOG_TRAIN):
+    dog_train_files = limit_files(os.listdir(DOG_TRAIN), train_limit)
+    print(f"Processing {len(dog_train_files)} dog training samples")
+    for sound in dog_train_files:
         create_spectogram(sound, DOG_TRAIN, './img_dataset/train/dog/')
     
-    # Process test data
+    # Process test data with limits
     DOG_TEST = './data/cats_dogs/test/test/'
-    for sound in os.listdir(DOG_TEST):
+    dog_test_files = limit_files(os.listdir(DOG_TEST), test_limit)
+    print(f"Processing {len(dog_test_files)} dog testing samples")
+    for sound in dog_test_files:
         create_spectogram(sound, DOG_TEST, './img_dataset/test/dog/')
     
     CAT_TEST = './data/cats_dogs/test/cats/'
-    for sound in os.listdir(CAT_TEST):
+    cat_test_files = limit_files(os.listdir(CAT_TEST), test_limit)
+    print(f"Processing {len(cat_test_files)} cat testing samples")
+    for sound in cat_test_files:
         create_spectogram(sound, CAT_TEST, './img_dataset/test/cat/')
     
     # Process inference data if it exists
@@ -72,27 +99,62 @@ def process_audio_files():
             create_spectogram(sound, INFERENCES, './img_dataset/inferences/')
 
 def create_metadata():
-    """Create metadata CSV files for the dataset."""
-    image_names_ls = []
-    file_location = []
+    """Create metadata CSV files for the dataset.
     
-    for i in ['test', 'train']:
-        for j in ['cat', 'dog']:
-            image_names_ls.append([img for img in os.listdir(f'./img_dataset/{i}/{j}/')])
-            file_location.append([f'./img_dataset/{i}/{j}/{img}' for img in os.listdir(f'./img_dataset/{i}/{j}/')])
+    Only includes files that actually exist in the image directories.
+    """
+    # Initialize empty lists for each dataset
+    test_images = []
+    test_locations = []
+    test_targets = []
+    
+    train_images = []
+    train_locations = []
+    train_targets = []
+    
+    # Process test data
+    for class_name in ['cat', 'dog']:
+        img_dir = f'./img_dataset/test/{class_name}/'
+        if os.path.exists(img_dir):
+            for img in os.listdir(img_dir):
+                img_path = os.path.join(img_dir, img)
+                if os.path.isfile(img_path):
+                    test_images.append(img)
+                    test_locations.append(img_path)
+                    test_targets.append(class_name)
+    
+    # Process train data
+    for class_name in ['cat', 'dog']:
+        img_dir = f'./img_dataset/train/{class_name}/'
+        if os.path.exists(img_dir):
+            for img in os.listdir(img_dir):
+                img_path = os.path.join(img_dir, img)
+                if os.path.isfile(img_path):
+                    train_images.append(img)
+                    train_locations.append(img_path)
+                    train_targets.append(class_name)
     
     # Create dataframes for test and train sets
     test_set = pd.DataFrame({
-        'image_name': image_names_ls[0] + image_names_ls[1], 
-        'image_location': file_location[0] + file_location[1], 
-        'target': len(file_location[0])*['cat'] + len(file_location[1])*['dog']
+        'image_name': test_images,
+        'image_location': test_locations,
+        'target': test_targets
     })
     
     train_set = pd.DataFrame({
-        'image_name': image_names_ls[2] + image_names_ls[3], 
-        'image_location': file_location[2] + file_location[3], 
-        'target': len(file_location[2])*['cat'] + len(file_location[3])*['dog']
+        'image_name': train_images,
+        'image_location': train_locations,
+        'target': train_targets
     })
+    
+    # Print dataset statistics
+    print(f"Training set: {len(train_set)} samples")
+    print(f"  - Cat samples: {len(train_set[train_set['target'] == 'cat'])}")
+    print(f"  - Dog samples: {len(train_set[train_set['target'] == 'dog'])}")
+    
+    print(f"Test set: {len(test_set)} samples")
+    print(f"  - Cat samples: {len(test_set[test_set['target'] == 'cat'])}")
+    print(f"  - Dog samples: {len(test_set[test_set['target'] == 'dog'])}")
     
     # Save metadata to CSV files
     test_set.to_csv('./img_dataset/test/test.csv', index=False)
@@ -118,7 +180,8 @@ def main():
     
     # Step 3: Process audio files and create spectrograms
     print("Converting audio files to spectrograms...")
-    process_audio_files()
+    # Use 100 samples for training and 13 for testing from each class
+    process_audio_files(train_limit=100, test_limit=13)
     
     # Step 4: Create metadata CSV files
     print("Creating metadata files...")
