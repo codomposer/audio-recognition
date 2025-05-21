@@ -1,11 +1,9 @@
 """
 Display module for audio classification model.
-This module provides functionality to load a trained model and run inferences on audio files by
-converting them to spectrograms first.
+This module provides functionality to load a trained model and run inferences on spectrogram images.
 """
 
 import os
-import sys
 import pandas as pd
 import numpy as np
 import torch
@@ -16,12 +14,8 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report
 import time
 import random
-import librosa
-import librosa.display
-
-# Add the parent directory to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from model import EnhancedAudioCNN, train_model, eval_model
+
 
 def load_model(model_path="audio_classification_model_augmented.pth", device=None):
     """
@@ -46,36 +40,14 @@ def load_model(model_path="audio_classification_model_augmented.pth", device=Non
     return model, device
 
 
-def create_spectogram(audio_file_name, source_path, save_path):
+def run_inference(model, inference_dir, device=None):
     """
-    Create a spectrogram image from an audio file and save it as a jpg file.
-    
-    Args:
-        audio_file_name (str): Name of the audio file
-        source_path (str): Path to the directory containing the audio file
-        save_path (str): Path to save the spectrogram image
-    """
-    x, sr = librosa.load(os.path.join(source_path, audio_file_name))
-    X = librosa.stft(x)
-    Xdb = librosa.amplitude_to_db(abs(X))
-    plt.figure(figsize=(14, 5))
-    librosa.display.specshow(Xdb, sr=sr, y_axis='hz')
-    plt.ylabel('')
-    plt.axis('off')
-    file_name = audio_file_name.replace('.wav', '')
-    plt.savefig(os.path.join(save_path, file_name + '.jpg'), bbox_inches='tight', pad_inches=0)
-    plt.close()
-    return file_name + '.jpg'
-
-def run_inference(model, audio_dir, device=None, temp_dir='temp/'):
-    """
-    Run inferences on audio files in the specified directory by first converting them to spectrograms.
+    Run inferences on spectrogram images in the specified directory.
     
     Args:
         model: Trained PyTorch model
-        audio_dir (str): Directory containing audio files
+        inference_dir (str): Directory containing spectrogram images
         device (torch.device): Device to run inference on
-        temp_dir (str): Temporary directory to save spectrograms
         
     Returns:
         dict: Dictionary mapping filenames to predictions
@@ -88,42 +60,34 @@ def run_inference(model, audio_dir, device=None, temp_dir='temp/'):
         transforms.ToTensor()
     ])
     
-    # Create temp directory if it doesn't exist
-    os.makedirs(temp_dir, exist_ok=True)
-    
-    # Run inferences on audio files
-    print("\nRunning inferences on audio files:")
+    # Run inferences on test spectrogram images
+    print("\nRunning inferences on test spectrogram images:")
     model.eval()
     
     results = {}
     
-    for audio_file in os.listdir(audio_dir):
-        if not audio_file.endswith(".wav"):
+    for spectrogram in os.listdir(inference_dir):
+        if not spectrogram.endswith(".jpg"):
             continue
         try:
-            # Convert audio to spectrogram
-            print(f"Converting {audio_file} to spectrogram...")
-            spectrogram_file = create_spectogram(audio_file, audio_dir, temp_dir)
-            
             # Load the spectrogram image
-            img_path = os.path.join(temp_dir, spectrogram_file)
+            img_path = os.path.join(inference_dir, spectrogram)
             image = Image.open(img_path).convert("RGB")
-            
             # Apply transforms
             img_tensor = transform(image)
+            # For CNN, we can use the image tensor directly
             # Add batch dimension
             features = img_tensor.unsqueeze(0).to(device)
-            
             # Make prediction
             pred = model(features)
             if pred[0, 0] < 0.5:
                 label = "cat"
             else:
                 label = "dog"
-            print(f"For {audio_file}, the prediction is {label}.")
-            results[audio_file] = label
+            print(f"for {spectrogram}, the prediction is {label}.")
+            results[spectrogram] = label
         except Exception as e:
-            print(f"Error processing {audio_file}: {e}")
+            print(f"Error processing {spectrogram}: {e}")
             continue
     
     return results
@@ -135,27 +99,24 @@ def main():
     # Load the model
     model, device = load_model()
     
-    # Define the directory containing audio files
-    audio_dir = "data/cats_dogs/inferences"
-    temp_dir = "temp/"
+    # Define the directory containing test images
+    # test_dir = "img_dataset/test/cat"
+    test_dir = "img_dataset/inferences"
     
     # Check if the directory exists, otherwise use a default path
-    if not os.path.exists(audio_dir):
-        print(f"Warning: {audio_dir} does not exist. Please provide a valid directory.")
+    if not os.path.exists(test_dir):
+        print(f"Warning: {test_dir} does not exist. Please provide a valid directory.")
         return
     
-    # Create temp directory if it doesn't exist
-    os.makedirs(temp_dir, exist_ok=True)
-    
     # Run inferences
-    results = run_inference(model, audio_dir, device, temp_dir)
+    results = run_inference(model, test_dir, device)
     
     # Print summary
     cat_count = sum(1 for label in results.values() if label == "cat")
     dog_count = sum(1 for label in results.values() if label == "dog")
     
     print("\nSummary:")
-    print(f"Total audio files processed: {len(results)}")
+    print(f"Total images processed: {len(results)}")
     print(f"Cat predictions: {cat_count}")
     print(f"Dog predictions: {dog_count}")
     
